@@ -2,7 +2,7 @@ package onedriveclient
 
 import (
 	"encoding/json"
-	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -53,10 +53,11 @@ func (vSelf *OneDriveClient) doRequest(pURL string, pResultBean interface{}) (vR
 		vURL = "https://api.onedrive.com/v1.0" + pURL
 	}
 
-	fmt.Printf("Asking %s\n", vURL)
 	vRequest, _ := http.NewRequest("GET", vURL, nil)
-	vRequest.Header.Set("Authorization", "bearer "+vSelf.athenticationToken.AccessToken)
 	vRequest.Header.Set("Content-Type", "application/json")
+	if vSelf.athenticationToken != nil {
+		vRequest.Header.Set("Authorization", "bearer "+vSelf.athenticationToken.AccessToken)
+	}
 
 	vResponse, vError := vSelf.httpClient.Do(vRequest)
 	vSelf.LastResponse.StatusCode = vResponse.StatusCode
@@ -75,6 +76,40 @@ func (vSelf *OneDriveClient) doRequest(pURL string, pResultBean interface{}) (vR
 			log.Printf("ERROR PARSING RESPONSE: %s %v", vData, vError)
 			return vError
 		}
+	}
+	return nil
+}
+
+func (vSelf *OneDriveClient) doGet(pURL string, pWriter io.Writer) (vRisError error) {
+
+	var vURL string
+	if strings.Contains(pURL, "://") {
+		vURL = pURL
+	} else {
+		vURL = "https://api.onedrive.com/v1.0" + pURL
+	}
+
+	vRequest, _ := http.NewRequest("GET", vURL, nil)
+	vRequest.Header.Set("Content-Type", "data/octetstream")
+	if vSelf.athenticationToken != nil {
+		vRequest.Header.Set("Authorization", "bearer "+vSelf.athenticationToken.AccessToken)
+	}
+
+	vResponse, vError := vSelf.httpClient.Do(vRequest)
+	vSelf.LastResponse.StatusCode = vResponse.StatusCode
+	vSelf.LastResponse.Body = ""
+
+	if vError != nil || vResponse.StatusCode != 200 {
+		log.Printf("RC: %d, %v", vResponse.StatusCode, vError)
+		return vError
+	}
+
+	_, vError = io.Copy(pWriter, vResponse.Body)
+
+	if vError != nil {
+		log.Printf("ERROR DOWNLOADING: %s %v", pURL, vError)
+		return vError
+
 	}
 	return nil
 }

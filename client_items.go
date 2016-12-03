@@ -1,7 +1,10 @@
 package onedriveclient
 
-import "log"
-import "fmt"
+import (
+	"fmt"
+	"io"
+	"log"
+)
 
 //GetChildren get item children
 func (vSelf *OneDriveClient) GetChildren(pItem interface{}) (vRisChildren *Chunk, vRisError error) {
@@ -69,4 +72,9 @@ func (vSelf *OneDriveClient) GetItem(pItem interface{}, pExpandChildren bool) (v
 	}
 
 	return vItemData, nil
+}
+
+//DownloadContentInto download an item content
+func (vSelf *OneDriveClient) DownloadContentInto(pItem *OneDriveItem, pWriter io.Writer) error {
+	return vSelf.doGet("/drive/items/"+pItem.GetId()+"/content", pWriter)
 }

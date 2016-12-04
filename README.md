@@ -50,7 +50,7 @@ In the following example program show an authentication url to copy and paste to
 ````go
 
     //Build an offline authentication helper
-    vAuthenticationHelper := auth.NewOfflineAuthHelper("localhost:8080", "!!!clientid!!!", "!!!clientsecret!!!", []string{"offline_access", "onedrive.readonly"})
+    vAuthenticationHelper := auth.NewOfflineAuthHelper("!!!clientid!!!", "!!!clientsecret!!!", []string{"offline_access", "onedrive.readonly"})
 
 
 ````

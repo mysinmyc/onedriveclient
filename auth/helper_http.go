@@ -1,11 +1,9 @@
 package auth
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -75,43 +73,14 @@ func (vSelf *HttpAuthHelper) init() error {
 		pRequest.ParseForm()
 		vCode := pRequest.FormValue("code")
 
-		log.Printf("Obtained authorization code %s, asking redeem...", vCode)
+		log.Printf("Asking for token reedim authorization code %s, asking redeem...", vCode)
 
-		vReedimRequest, _ := http.NewRequest("POST", "https://login.live.com/oauth20_token.srf",
-			strings.NewReader(fmt.Sprintf(
-				"client_id=%s&redirect_uri=%s&client_secret=%s&code=%s&grant_type=authorization_code",
-				vSelf.clientID,
-				url.QueryEscape("http://"+vSelf.address+"/redirect"),
-				vSelf.clientSecret,
-				vCode)))
-
-		vReedimRequest.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-		vReedimResponse, vReedimError := http.DefaultClient.Do(vReedimRequest)
+		vAuthenticationToken, vReedimError := reedimCode(vSelf.clientID, vSelf.clientSecret, url.QueryEscape("http://"+vSelf.address+"/redirect"), vCode)
 
 		if vReedimError != nil {
-			log.Printf("ERROR: asking for token reedim:%s", vReedimError)
-
 			vSelf.onAuthenticationError(vReedimError)
 			return
 		}
-
-		if vReedimResponse.StatusCode != http.StatusOK {
-			vBodyString, _ := ioutil.ReadAll(vReedimResponse.Body)
-
-			log.Printf("error: %d, %s", vReedimResponse.StatusCode, vBodyString)
-			vSelf.onAuthenticationError(fmt.Errorf("error: %d, %s", vReedimResponse.StatusCode, vBodyString))
-			return
-		}
-		vAuthenticationToken := AuthenticationToken{CreationTime: time.Now()}
-
-		vDecodeError := json.NewDecoder(vReedimResponse.Body).Decode(&vAuthenticationToken)
-		if vDecodeError != nil {
-			log.Printf("ERROR: failed to decode token:%s", vDecodeError)
-			vSelf.onAuthenticationError(vDecodeError)
-			return
-		}
-
-		log.Printf("reedimResponse token is  %s", vAuthenticationToken.AccessToken)
 
 		vSelf.onAuthenticationToken(&vAuthenticationToken)
 

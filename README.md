@@ -4,6 +4,7 @@ A golang implementation of onedrive client
 
 
 
+
 ##Usage
 
 
@@ -25,8 +26,11 @@ import (
     //Create a new client instance
 	vClient := onedriveclient.NewOneDriveClient()
 
+    //Build an online authentication helper
+    vAuthenticationHelper := auth.NewHttpAuthHelper("localhost:8080", "!!!clientid!!!", "!!!clientsecret!!!", []string{"offline_access", "onedrive.readonly"})
+
     //Perform authentication
-    vAuthenticationError :=vClient.PerformNewAuthentication(auth.NewHttpAuthHelper("localhost:8080", "!!!clientid!!!", "!!!clientsecret!!!", []string{"offline_access", "onedrive.readonly"}),time.Second * 120	)
+    vAuthenticationError :=vClient.PerformNewAuthentication(vAuthenticationHelper,time.Second * 120	)
 
     //Check authentication
     if vAuthenticationError!=nil {
@@ -36,3 +40,20 @@ import (
 
 ````
 
+
+## Offline authentication
+
+Sometimes there is no direct connectivity between client and server or httpd cannot be used. In these cases it can be used and offline authentication helper
+
+In the following example program show an authentication url to copy and paste to/from and external browser.
+
+````go
+
+    //Build an offline authentication helper
+    vAuthenticationHelper := auth.NewOfflineAuthHelper("localhost:8080", "!!!clientid!!!", "!!!clientsecret!!!", []string{"offline_access", "onedrive.readonly"})
+
+
+````
+
+The offline authentication supports also token reedim by using OfflineAuthHelper.ReedimTokenFromRedirectURI(string) instance method
+ 

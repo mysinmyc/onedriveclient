@@ -15,9 +15,9 @@ import (
 
 //OneDriveClient client instance
 type OneDriveClient struct {
-	athenticationToken *auth.AuthenticationToken
-	httpClient         *http.Client
-	LastResponse       struct {
+	authenticationToken *auth.AuthenticationToken
+	httpClient          *http.Client
+	LastResponse        struct {
 		StatusCode int
 		Body       string
 	}
@@ -33,7 +33,7 @@ func NewOneDriveClient() *OneDriveClient {
 
 //SetAuthenticationToken set current authentication token
 func (vSelf *OneDriveClient) SetAuthenticationToken(pAuthenticationToken *auth.AuthenticationToken) *OneDriveClient {
-	vSelf.athenticationToken = pAuthenticationToken
+	vSelf.authenticationToken = pAuthenticationToken
 	return vSelf
 }
 
@@ -55,16 +55,22 @@ func (vSelf *OneDriveClient) doRequest(pURL string, pResultBean interface{}) (vR
 
 	vRequest, _ := http.NewRequest("GET", vURL, nil)
 	vRequest.Header.Set("Content-Type", "application/json")
-	if vSelf.athenticationToken != nil {
-		vRequest.Header.Set("Authorization", "bearer "+vSelf.athenticationToken.AccessToken)
+
+	vTokenError := vSelf.setAuthenticationCode(vRequest)
+	if vTokenError != nil {
+		return vTokenError
 	}
 
 	vResponse, vError := vSelf.httpClient.Do(vRequest)
-	vSelf.LastResponse.StatusCode = vResponse.StatusCode
+	vResponseCode := -1
+	if vResponse != nil {
+		vResponseCode = vResponse.StatusCode
+	}
+	vSelf.LastResponse.StatusCode = vResponseCode
 	vSelf.LastResponse.Body = ""
 
-	if vError != nil || vResponse.StatusCode != 200 {
-		log.Printf("RC: %d, %v", vResponse.StatusCode, vError)
+	if vError != nil || vResponseCode != 200 {
+		log.Printf("RC: %d, %v", vResponseCode, vError)
 		return vError
 	}
 
@@ -91,8 +97,10 @@ func (vSelf *OneDriveClient) doGet(pURL string, pWriter io.Writer) (vRisError er
 
 	vRequest, _ := http.NewRequest("GET", vURL, nil)
 	vRequest.Header.Set("Content-Type", "data/octetstream")
-	if vSelf.athenticationToken != nil {
-		vRequest.Header.Set("Authorization", "bearer "+vSelf.athenticationToken.AccessToken)
+
+	vTokenError := vSelf.setAuthenticationCode(vRequest)
+	if vTokenError != nil {
+		return vTokenError
 	}
 
 	vResponse, vError := vSelf.httpClient.Do(vRequest)
@@ -111,5 +119,19 @@ func (vSelf *OneDriveClient) doGet(pURL string, pWriter io.Writer) (vRisError er
 		return vError
 
 	}
+	return nil
+}
+
+func (vSelf *OneDriveClient) setAuthenticationCode(pRequest *http.Request) error {
+	if vSelf.authenticationToken != nil {
+
+		vTokenError := vSelf.authenticationToken.Validate()
+		if vTokenError != nil {
+			return vTokenError
+		}
+
+		pRequest.Header.Set("Authorization", "bearer "+vSelf.authenticationToken.AccessToken)
+	}
+
 	return nil
 }

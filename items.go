@@ -45,10 +45,17 @@ type OneDriveItem struct {
 		Organization *Identity `json:"organization"`
 	} `json:"CreatedBy"`
 
-	CreatedDateTime time.Time `json:"createdDateTime"`
+	CreatedDateTime      time.Time `json:"createdDateTime"`
+	LastModifiedDateTime time.Time `json:"lastModifiedDateTime"`
 
 	//If present, contains the url of the next chunk contains the rest of the children
 	ChildrenNextLink string `json:"children@odata.nextLink"`
+
+	ParentReference *struct {
+		DriveId string `json:"driveId"`
+		Id      string `json:"id"`
+		Path    string `json:"path"`
+	} `json:"parentReference"`
 }
 
 type Identity struct {

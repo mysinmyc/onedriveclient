@@ -7,18 +7,17 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 )
 
-func reedimCode(pClientID, pClientSecret, pRedirectURI, pCode string) (vRisAuthenticatioToken AuthenticationToken, vRisError error) {
+func reedimCode(pApplicationInfo ApplicationInfo, pCode string) (vRisAuthenticatioToken AuthenticationToken, vRisError error) {
 	log.Printf("Asking redeem for authorization code %s, ...", pCode)
 
 	vReedimRequest, _ := http.NewRequest("POST", "https://login.live.com/oauth20_token.srf",
 		strings.NewReader(fmt.Sprintf(
 			"client_id=%s&redirect_uri=%s&client_secret=%s&code=%s&grant_type=authorization_code",
-			pClientID,
-			pRedirectURI,
-			pClientSecret,
+			pApplicationInfo.ClientID,
+			pApplicationInfo.RedirectURI,
+			pApplicationInfo.ClientSecret,
 			pCode)))
 
 	vReedimRequest.Header.Add("Content-Type", "application/x-www-form-urlencoded")
@@ -37,7 +36,7 @@ func reedimCode(pClientID, pClientSecret, pRedirectURI, pCode string) (vRisAuthe
 		vRisError = fmt.Errorf("error: %d, %s", vReedimResponse.StatusCode, vBodyString)
 		return
 	}
-	vAuthenticationToken := AuthenticationToken{CreationTime: time.Now()}
+	vAuthenticationToken := *newAuthenticationToken()
 
 	vDecodeError := json.NewDecoder(vReedimResponse.Body).Decode(&vAuthenticationToken)
 	if vDecodeError != nil {

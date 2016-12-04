@@ -14,15 +14,13 @@ import (
 // It requires a manual user setup
 // For more informations about auth workflow check https://dev.onedrive.com/auth/msa_oauth.htm
 type OfflineAuthHelper struct {
-	clientID              string
-	clientSecret          string
-	scope                 []string
+	applicationInfo       ApplicationInfo
 	authenticationHandler func(*AuthenticationToken)
 }
 
 //NewOfflineAuthHelper create a new instance of OfflineAuthHelper
 func NewOfflineAuthHelper(pClientID string, pClientSecret string, pScope []string) *OfflineAuthHelper {
-	vRis := &OfflineAuthHelper{clientID: pClientID, clientSecret: pClientSecret, scope: pScope}
+	vRis := &OfflineAuthHelper{applicationInfo: ApplicationInfo{ClientID: pClientID, ClientSecret: pClientSecret, Scope: pScope, RedirectURI: "https://login.live.com/oauth20_desktop.srf"}}
 	return vRis
 }
 
@@ -72,8 +70,8 @@ func (vSelf *OfflineAuthHelper) WaitAuthenticationToken(pTimeout time.Duration) 
 	case vToken := <-vTokenChannel:
 		return vToken, vToken.Error
 	case <-time.After(pTimeout):
-		vError := errors.New("timeout expired")
-		return &AuthenticationToken{Error: vError}, vError
+		vError := errors.New("timeout expired waiting for authentication")
+		return newAuthenticationTokenError(vError), vError
 
 	}
 
@@ -83,9 +81,9 @@ func (vSelf *OfflineAuthHelper) WaitAuthenticationToken(pTimeout time.Duration) 
 func (vSelf *OfflineAuthHelper) GetAuthorizationURL() string {
 	vMicrosoftLoginURL := fmt.Sprintf(
 		"https://login.live.com/oauth20_authorize.srf?client_id=%s&scope=%s&response_type=code&redirect_uri=%s",
-		vSelf.clientID,
-		strings.Join(vSelf.scope, "%20"),
-		url.QueryEscape("https://login.live.com/oauth20_desktop.srf"))
+		vSelf.applicationInfo.ClientID,
+		strings.Join(vSelf.applicationInfo.Scope, "%20"),
+		url.QueryEscape(vSelf.applicationInfo.RedirectURI))
 
 	return vMicrosoftLoginURL
 }
@@ -96,23 +94,28 @@ func (vSelf *OfflineAuthHelper) ReedimTokenFromRedirectURI(pURI string) (vRisAut
 	vURI, vError := url.ParseRequestURI(pURI)
 
 	if vError != nil {
-		return &AuthenticationToken{Error: vError}, vError
+		return newAuthenticationTokenError(vError), vError
 	}
 
 	vCode := vURI.Query().Get("code")
 
 	if vCode == "" {
 		vError := fmt.Errorf("missing code parameter in uri %s ", pURI)
-		return &AuthenticationToken{Error: vError}, vError
+		return newAuthenticationTokenError(vError), vError
 	}
 
-	vAuthenticationToken, vReedimError := reedimCode(vSelf.clientID, vSelf.clientSecret, url.QueryEscape("https://login.live.com/oauth20_desktop.srf"), vCode)
+	vAuthenticationToken, vReedimError := reedimCode(vSelf.applicationInfo, vCode)
 
 	if vReedimError != nil {
 		vSelf.onAuthenticationError(vReedimError)
-		return &AuthenticationToken{Error: vReedimError}, vReedimError
+		return newAuthenticationTokenError(vReedimError), vReedimError
 	}
 
 	vSelf.onAuthenticationToken(&vAuthenticationToken)
 	return &vAuthenticationToken, nil
+}
+
+func (vSelf *OfflineAuthHelper) RefreshToken(pAuthenticationToken *AuthenticationToken) (vRisToken *AuthenticationToken, vRisError error) {
+	vRisToken, vRisError = pAuthenticationToken.Refresh(vSelf.applicationInfo)
+	return
 }

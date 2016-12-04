@@ -20,16 +20,14 @@ var (
 // In start an http server on the specified address
 // For more informations about auth workflow check https://dev.onedrive.com/auth/msa_oauth.htm
 type HttpAuthHelper struct {
+	applicationInfo       ApplicationInfo
 	address               string
-	clientID              string
-	clientSecret          string
-	scope                 []string
 	authenticationHandler func(*AuthenticationToken)
 }
 
 //NewAuthHelper create a new instance of AuthenticationHelper
 func NewHttpAuthHelper(pAddress string, pClientID string, pClientSecret string, pScope []string) *HttpAuthHelper {
-	vRis := &HttpAuthHelper{address: pAddress, clientID: pClientID, clientSecret: pClientSecret, scope: pScope}
+	vRis := &HttpAuthHelper{address: pAddress, applicationInfo: ApplicationInfo{ClientID: pClientID, ClientSecret: pClientSecret, Scope: pScope, RedirectURI: "http://" + pAddress + "/redirect"}}
 	vRis.init()
 	return vRis
 }
@@ -47,7 +45,7 @@ func (vSelf *HttpAuthHelper) onAuthenticationToken(pAuthenticationToken *Authent
 
 func (vSelf *HttpAuthHelper) onAuthenticationError(pError error) {
 	if vSelf.authenticationHandler != nil {
-		vSelf.onAuthenticationToken(&AuthenticationToken{Error: pError})
+		vSelf.onAuthenticationToken(newAuthenticationTokenError(pError))
 	}
 }
 
@@ -62,9 +60,9 @@ func (vSelf *HttpAuthHelper) init() error {
 		log.Printf("Asked login, redirecting to microsoft...")
 		vMicrosoftLoginURL := fmt.Sprintf(
 			"https://login.live.com/oauth20_authorize.srf?client_id=%s&scope=%s&response_type=code&redirect_uri=%s",
-			vSelf.clientID,
-			strings.Join(vSelf.scope, "%20"),
-			url.QueryEscape("http://"+vSelf.address+"/redirect"))
+			vSelf.applicationInfo.ClientID,
+			strings.Join(vSelf.applicationInfo.Scope, "%20"),
+			url.QueryEscape(vSelf.applicationInfo.RedirectURI))
 		http.Redirect(pResponse, pRequest, vMicrosoftLoginURL, 302)
 	})
 
@@ -75,7 +73,7 @@ func (vSelf *HttpAuthHelper) init() error {
 
 		log.Printf("Asking for token reedim authorization code %s, asking redeem...", vCode)
 
-		vAuthenticationToken, vReedimError := reedimCode(vSelf.clientID, vSelf.clientSecret, url.QueryEscape("http://"+vSelf.address+"/redirect"), vCode)
+		vAuthenticationToken, vReedimError := reedimCode(vSelf.applicationInfo, vCode)
 
 		if vReedimError != nil {
 			vSelf.onAuthenticationError(vReedimError)
@@ -115,9 +113,14 @@ func (vSelf *HttpAuthHelper) WaitAuthenticationToken(pTimeout time.Duration) (vR
 	case vToken := <-vTokenChannel:
 		return vToken, vToken.Error
 	case <-time.After(pTimeout):
-		vError := errors.New("timeout expired")
-		return &AuthenticationToken{Error: vError}, vError
+		vError := errors.New("timeout expired waiting for authentication")
+		return newAuthenticationTokenError(vError), vError
 
 	}
 
+}
+
+func (vSelf *HttpAuthHelper) RefreshToken(pAuthenticationToken *AuthenticationToken) (vRisToken *AuthenticationToken, vRisError error) {
+	vRisToken, vRisError = pAuthenticationToken.Refresh(vSelf.applicationInfo)
+	return
 }

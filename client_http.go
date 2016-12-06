@@ -6,6 +6,8 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"fmt"
+	"time"
 	"net/http"
 	"strings"
 
@@ -34,7 +36,7 @@ func (vSelf *OneDriveClient) DoRequest(pMethod string, pURL string, pRequestModi
 		return vModifierError
 	}
 
-	vResponse, vError := vSelf.doRequest(vRequest)
+	vResponse, vError := vSelf.doRequest(vRequest,0)
 	if vError != nil {
 		return vError
 	}
@@ -71,7 +73,7 @@ func (vSelf *OneDriveClient) DoRequestDownload(pMethod string, pURL string, pWri
 
 	vRequest, _ := http.NewRequest(pMethod, vURL, nil)
 
-	vResponse, vError := vSelf.doRequest(vRequest)
+	vResponse, vError := vSelf.doRequest(vRequest,0)
 
 	if vError != nil {
 		return vError
@@ -88,7 +90,7 @@ func (vSelf *OneDriveClient) DoRequestDownload(pMethod string, pURL string, pWri
 	return nil
 }
 
-func (vSelf *OneDriveClient) doRequest(pRequest *http.Request) (*http.Response, error) {
+func (vSelf *OneDriveClient) doRequest(pRequest *http.Request,pRetryNumber int) (*http.Response, error) {
 
 	vTokenError := vSelf.setAuthorization(pRequest)
 
@@ -107,7 +109,13 @@ func (vSelf *OneDriveClient) doRequest(pRequest *http.Request) (*http.Response, 
 	}
 
 	if vResponseCode != 200 {
-		return nil, vError
+
+		if vResponseCode > 500 && pRetryNumber <5 {
+			log.Printf("Error %d, retry...",vResponseCode)
+			time.Sleep(time.Second * 1)
+			return vSelf.doRequest(pRequest,pRetryNumber+1)
+		}
+		return nil, fmt.Errorf("ResponseCode %d",vResponseCode)
 	}
 
 	return vResponse, nil

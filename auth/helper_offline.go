@@ -20,8 +20,18 @@ type OfflineAuthHelper struct {
 
 //NewOfflineAuthHelper create a new instance of OfflineAuthHelper
 func NewOfflineAuthHelper(pClientID string, pClientSecret string, pScope []string) *OfflineAuthHelper {
-	vRis := &OfflineAuthHelper{applicationInfo: ApplicationInfo{ClientID: pClientID, ClientSecret: pClientSecret, Scope: pScope, RedirectURI: "https://login.live.com/oauth20_desktop.srf"}}
+	return NewOfflineAuthHelperFromApplicationInfo(ApplicationInfo{ClientID: pClientID, ClientSecret: pClientSecret, Scope: pScope})
+}
+
+func NewOfflineAuthHelperFromApplicationInfo(pApplicationInfo ApplicationInfo) *OfflineAuthHelper {
+
+	vApplicationInfo := pApplicationInfo
+	if vApplicationInfo.RedirectURI == "" {
+		vApplicationInfo.RedirectURI = "https://login.live.com/oauth20_desktop.srf"
+	}
+	vRis := &OfflineAuthHelper{applicationInfo: vApplicationInfo}
 	return vRis
+
 }
 
 //SetAuthenticationHandler Set the function that received AuthenticationTokens coming from authentication flow
@@ -118,4 +128,8 @@ func (vSelf *OfflineAuthHelper) ReedimTokenFromRedirectURI(pURI string) (vRisAut
 func (vSelf *OfflineAuthHelper) RefreshToken(pAuthenticationToken *AuthenticationToken) (vRisToken *AuthenticationToken, vRisError error) {
 	vRisToken, vRisError = pAuthenticationToken.Refresh(vSelf.applicationInfo)
 	return
+}
+
+func (vSelf *OfflineAuthHelper) GetApplicationInfo() ApplicationInfo {
+	return vSelf.applicationInfo
 }

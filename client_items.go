@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 )
 
 //GetChildren get item children
@@ -12,11 +13,15 @@ func (vSelf *OneDriveClient) GetChildren(pItem interface{}) (vRisChildren *Chunk
 	vRis := &Chunk{}
 
 	switch pItem.(type) {
+
+	case string:
+		vRisError = vSelf.DoRequest(http.MethodGet, "/drive/root:/"+pItem.(string)+"/children", nil, vRis)
+
 	case *Drive:
-		vRisError = vSelf.doRequest("/drives/"+pItem.(*Drive).GetId()+"/root/children", vRis)
+		vRisError = vSelf.DoRequest(http.MethodGet, "/drives/"+pItem.(*Drive).GetId()+"/root/children", nil, vRis)
 
 	case *OneDriveItem:
-		vRisError = vSelf.doRequest("/drive/items/"+pItem.(Item).GetId()+"/children", vRis)
+		vRisError = vSelf.DoRequest(http.MethodGet, "/drive/items/"+pItem.(Item).GetId()+"/children", nil, vRis)
 
 	default:
 		vRisError = fmt.Errorf("Invalid item type %T", pItem)
@@ -27,24 +32,6 @@ func (vSelf *OneDriveClient) GetChildren(pItem interface{}) (vRisChildren *Chunk
 	}
 
 	return vRis, nil
-}
-
-//GetItemByPath get an item by his path
-func (vSelf *OneDriveClient) GetItemByPath(pPath string, pExpandChildren bool) (vRisItem *OneDriveItem, vRisError error) {
-
-	vItemData := &OneDriveItem{}
-
-	vSuffix := ""
-	if pExpandChildren {
-		vSuffix = "?expand=children"
-	}
-	vRisError = vSelf.doRequest("/drive/root:/"+pPath+vSuffix, vItemData)
-
-	if vRisError != nil {
-		log.Printf("Error getting item by path %v: %v", pPath, vRisError)
-	}
-
-	return vItemData, nil
 }
 
 //GetItem Item metadata
@@ -58,10 +45,13 @@ func (vSelf *OneDriveClient) GetItem(pItem interface{}, pExpandChildren bool) (v
 	}
 
 	switch pItem.(type) {
+
+	case string:
+		vRisError = vSelf.DoRequest(http.MethodGet, "/drive/root:/"+pItem.(string)+vSuffix, nil, vItemData)
 	case *Drive:
-		vRisError = vSelf.doRequest("/drives/"+pItem.(*Drive).GetId()+"/root"+vSuffix, vItemData)
+		vRisError = vSelf.DoRequest(http.MethodGet, "/drives/"+pItem.(*Drive).GetId()+"/root"+vSuffix, nil, vItemData)
 	case *OneDriveItem:
-		vRisError = vSelf.doRequest("/drive/items/"+pItem.(Item).GetId()+vSuffix, vItemData)
+		vRisError = vSelf.DoRequest(http.MethodGet, "/drive/items/"+pItem.(Item).GetId()+vSuffix, nil, vItemData)
 	default:
 		vRisError = fmt.Errorf("Invalid item type %T", pItem)
 
@@ -76,5 +66,5 @@ func (vSelf *OneDriveClient) GetItem(pItem interface{}, pExpandChildren bool) (v
 
 //DownloadContentInto download an item content
 func (vSelf *OneDriveClient) DownloadContentInto(pItem *OneDriveItem, pWriter io.Writer) error {
-	return vSelf.doGet("/drive/items/"+pItem.GetId()+"/content", pWriter)
+	return vSelf.DoRequestDownload(http.MethodGet, "/drive/items/"+pItem.GetId()+"/content", pWriter)
 }

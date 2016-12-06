@@ -124,3 +124,7 @@ func (vSelf *HttpAuthHelper) RefreshToken(pAuthenticationToken *AuthenticationTo
 	vRisToken, vRisError = pAuthenticationToken.Refresh(vSelf.applicationInfo)
 	return
 }
+
+func (vSelf *HttpAuthHelper) GetApplicationInfo() ApplicationInfo {
+	return vSelf.applicationInfo
+}

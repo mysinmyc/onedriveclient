@@ -1,5 +1,9 @@
 package onedriveclient
 
+import (
+	"net/http"
+)
+
 //Quota contains drive's quota statics
 type Quota struct {
 	Total     int    `json:"total"`
@@ -20,7 +24,7 @@ type Drive struct {
 func (vSelf *OneDriveClient) GetDefaultDrive() (vRisDrive *Drive, vRisError error) {
 
 	vRis := &Drive{}
-	vRisError = vSelf.doRequest("/drive", vRis)
+	vRisError = vSelf.DoRequest(http.MethodGet, "/drive", nil, vRis)
 	vRisDrive = vRis
 	return
 }

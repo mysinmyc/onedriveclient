@@ -14,4 +14,5 @@ type ApplicationInfo struct {
 type AuthenticationHelper interface {
 	WaitAuthenticationToken(time.Duration) (*AuthenticationToken, error)
 	RefreshToken(*AuthenticationToken) (*AuthenticationToken, error)
+	GetApplicationInfo() ApplicationInfo
 }

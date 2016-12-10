@@ -37,7 +37,6 @@ func (vSelf *OneDriveClient) GetNextChunk(pItem Chunked) (vRisChunk *Chunk, vRis
 
 	vChunk := &Chunk{}
 
-	log.Printf("Asking chunk...")
 	vError := vSelf.DoRequest(http.MethodGet, pItem.GetNextChunkLink(), nil, vChunk)
 
 	if vError != nil {

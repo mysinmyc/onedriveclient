@@ -24,9 +24,7 @@ type OneDriveItem struct {
 	//Item children (if nil are not loaded)
 	Children []*OneDriveItem `json:"children"`
 
-	Folder *struct {
-		ChildCount int64 `json:"ChildCount"`
-	} `json:"folder"`
+	Folder *Folder `json:"folder"`
 
 	File *struct {
 		MimeType           string `json:"mimeType"`
@@ -51,11 +49,17 @@ type OneDriveItem struct {
 	//If present, contains the url of the next chunk contains the rest of the children
 	ChildrenNextLink string `json:"children@odata.nextLink"`
 
-	ParentReference *struct {
-		DriveId string `json:"driveId"`
-		Id      string `json:"id"`
-		Path    string `json:"path"`
-	} `json:"parentReference"`
+	ParentReference *ParentReference `json:"parentReference"`
+}
+
+type Folder struct {
+	ChildCount int64 `json:"ChildCount"`
+}
+
+type ParentReference struct {
+	DriveId string `json:"driveId"`
+	Id      string `json:"id"`
+	Path    string `json:"path"`
 }
 
 type Identity struct {
@@ -73,4 +77,12 @@ func (vSelf *OneDriveItem) IsFolder() bool {
 
 func (vSelf *OneDriveItem) IsFile() bool {
 	return vSelf.File != nil
+}
+
+func (vSelf *OneDriveItem) GetFullOneDrivePath() string {
+
+	if vSelf.ParentReference == nil {
+		return "/drive/root:/" + vSelf.Name
+	}
+	return vSelf.ParentReference.Path + "/" + vSelf.Name
 }

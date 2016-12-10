@@ -3,13 +3,13 @@ package onedriveclient
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
-	"fmt"
-	"time"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/mysinmyc/onedriveclient/auth"
 )
@@ -36,14 +36,15 @@ func (vSelf *OneDriveClient) DoRequest(pMethod string, pURL string, pRequestModi
 		return vModifierError
 	}
 
-	vResponse, vError := vSelf.doRequest(vRequest,0)
+	vResponse, vError := vSelf.doRequest(vRequest, 0)
 	if vError != nil {
 		return vError
 	}
 
 	vData, _ := ioutil.ReadAll(vResponse.Body)
-	defer vResponse.Body.Close()
 
+	defer vResponse.Body.Close()
+	//log.Printf("RESPONSE: %s %v", vData, vError)
 	if pResultBean != nil {
 		vError = json.Unmarshal(vData, pResultBean)
 		if vError != nil {
@@ -73,7 +74,7 @@ func (vSelf *OneDriveClient) DoRequestDownload(pMethod string, pURL string, pWri
 
 	vRequest, _ := http.NewRequest(pMethod, vURL, nil)
 
-	vResponse, vError := vSelf.doRequest(vRequest,0)
+	vResponse, vError := vSelf.doRequest(vRequest, 0)
 
 	if vError != nil {
 		return vError
@@ -90,7 +91,7 @@ func (vSelf *OneDriveClient) DoRequestDownload(pMethod string, pURL string, pWri
 	return nil
 }
 
-func (vSelf *OneDriveClient) doRequest(pRequest *http.Request,pRetryNumber int) (*http.Response, error) {
+func (vSelf *OneDriveClient) doRequest(pRequest *http.Request, pRetryNumber int) (*http.Response, error) {
 
 	vTokenError := vSelf.setAuthorization(pRequest)
 
@@ -110,12 +111,12 @@ func (vSelf *OneDriveClient) doRequest(pRequest *http.Request,pRetryNumber int) 
 
 	if vResponseCode != 200 {
 
-		if vResponseCode > 500 && pRetryNumber <5 {
-			log.Printf("Error %d, retry...",vResponseCode)
+		if vResponseCode > 500 && pRetryNumber < 5 {
+			log.Printf("Error %d, retry...", vResponseCode)
 			time.Sleep(time.Second * 1)
-			return vSelf.doRequest(pRequest,pRetryNumber+1)
+			return vSelf.doRequest(pRequest, pRetryNumber+1)
 		}
-		return nil, fmt.Errorf("ResponseCode %d",vResponseCode)
+		return nil, fmt.Errorf("Url %s ResponseCode %d", pRequest.URL, vResponseCode)
 	}
 
 	return vResponse, nil

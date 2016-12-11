@@ -2,16 +2,19 @@ package onedriveclient
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/mysinmyc/gocommons/diagnostic"
 	"github.com/mysinmyc/onedriveclient/auth"
+)
+
+var (
+	RETRY_MAX      = 5
+	RETRY_INTERVAL = time.Second * 1
 )
 
 //DoRequest execute an http request to the drive
@@ -30,6 +33,10 @@ func (vSelf *OneDriveClient) DoRequest(pMethod string, pURL string, pRequestModi
 		vURL = "https://api.onedrive.com/v1.0" + pURL
 	}
 
+	if diagnostic.IsLogTrace() {
+		diagnostic.LogTrace("OneDriveClient.DoRequest", "Performing request url %s...", vURL)
+	}
+
 	vRequest, _ := http.NewRequest(pMethod, vURL, nil)
 	if pRequestModifierFunc != nil {
 		vModifierError := pRequestModifierFunc(vRequest)
@@ -38,18 +45,24 @@ func (vSelf *OneDriveClient) DoRequest(pMethod string, pURL string, pRequestModi
 
 	vResponse, vError := vSelf.doRequest(vRequest, 0)
 	if vError != nil {
-		return vError
+		return diagnostic.NewError("Error performing request", vError)
 	}
 
-	vData, _ := ioutil.ReadAll(vResponse.Body)
-
+	vData, vParseDataError := ioutil.ReadAll(vResponse.Body)
 	defer vResponse.Body.Close()
-	//log.Printf("RESPONSE: %s %v", vData, vError)
+
+	if vParseDataError != nil {
+		return diagnostic.NewError("Error parsing response body", vError)
+	}
+
+	if diagnostic.IsLogTrace() {
+		diagnostic.LogTrace("OneDriveClient.DoRequest", "Response  %s", vData)
+	}
+
 	if pResultBean != nil {
 		vError = json.Unmarshal(vData, pResultBean)
 		if vError != nil {
-			log.Printf("ERROR PARSING RESPONSE: %s %v", vData, vError)
-			return vError
+			return diagnostic.NewError("Error parsing response: %s", vError, vData)
 		}
 	}
 	return nil
@@ -72,20 +85,21 @@ func (vSelf *OneDriveClient) DoRequestDownload(pMethod string, pURL string, pWri
 		vURL = "https://api.onedrive.com/v1.0" + pURL
 	}
 
-	vRequest, _ := http.NewRequest(pMethod, vURL, nil)
+	vRequest, vError := http.NewRequest(pMethod, vURL, nil)
+	if vError != nil {
+		return diagnostic.NewError("Error creating request %s", vError, pURL)
+	}
 
 	vResponse, vError := vSelf.doRequest(vRequest, 0)
-
 	if vError != nil {
-		return vError
+		return diagnostic.NewError("Error executing request %s", vError, pURL)
 	}
 
 	_, vError = io.Copy(pWriter, vResponse.Body)
 	defer vResponse.Body.Close()
 
 	if vError != nil {
-		log.Printf("ERROR DOWNLOADING: %s %v", pURL, vError)
-		return vError
+		return diagnostic.NewError("Error downloading %s", vError, pURL)
 
 	}
 	return nil
@@ -93,6 +107,9 @@ func (vSelf *OneDriveClient) DoRequestDownload(pMethod string, pURL string, pWri
 
 func (vSelf *OneDriveClient) doRequest(pRequest *http.Request, pRetryNumber int) (*http.Response, error) {
 
+	if diagnostic.IsLogTrace() {
+		diagnostic.LogTrace("OneDriveClient.doRequest", "Performing request %s ...", pRequest.URL)
+	}
 	vTokenError := vSelf.setAuthorization(pRequest)
 
 	if vTokenError != nil {
@@ -111,12 +128,12 @@ func (vSelf *OneDriveClient) doRequest(pRequest *http.Request, pRetryNumber int)
 
 	if vResponseCode != 200 {
 
-		if vResponseCode > 500 && pRetryNumber < 5 {
-			log.Printf("Error %d, retry...", vResponseCode)
-			time.Sleep(time.Second * 1)
+		if vResponseCode > 500 && pRetryNumber < RETRY_MAX {
+			diagnostic.LogWarning("OneDriveClient.doRequest", "Response code %d, retry...", nil, vResponseCode)
+			time.Sleep(RETRY_INTERVAL)
 			return vSelf.doRequest(pRequest, pRetryNumber+1)
 		}
-		return nil, fmt.Errorf("Url %s ResponseCode %d", pRequest.URL, vResponseCode)
+		return nil, diagnostic.NewError("Url %s ResponseCode %d", nil, pRequest.URL, vResponseCode)
 	}
 
 	return vResponse, nil
@@ -124,26 +141,50 @@ func (vSelf *OneDriveClient) doRequest(pRequest *http.Request, pRetryNumber int)
 
 func (vSelf *OneDriveClient) setAuthorization(pRequest *http.Request) error {
 
-	if vSelf.authenticationToken == nil {
-		return errors.New("Missing authorization token")
-	}
+	var vAuthenticationToken *auth.AuthenticationToken
 
-	vTokenError := vSelf.authenticationToken.Validate()
-	if vTokenError != nil {
-		if _, vIsExpired := vTokenError.(*auth.TokenExpiredError); vIsExpired {
-			vNewToken, vError := vSelf.authenticationToken.Refresh(vSelf.applicationInfo)
+	if vSelf.authenticationProvider != nil {
+		var vAuthenticationTokenError error
+		vAuthenticationToken, vAuthenticationTokenError = vSelf.authenticationProvider.GetAuthenticationToken()
 
-			if vError != nil {
-				return vError
-			}
-
-			vSelf.authenticationToken = vNewToken
-		} else {
-			return vTokenError
+		if vAuthenticationTokenError != nil {
+			return diagnostic.NewError("Failed to obtain token", vAuthenticationTokenError)
 		}
 	}
 
-	pRequest.Header.Set("Authorization", "bearer "+vSelf.authenticationToken.AccessToken)
+	if vAuthenticationToken == nil {
+		return diagnostic.NewError("Missing authorization token", nil)
+	}
+
+	vTokenError := vAuthenticationToken.Validate()
+	if vTokenError != nil {
+		if _, vIsExpired := vTokenError.(*auth.TokenExpiredError); vIsExpired {
+
+			vApplicationInfo, vApplicationInfoError := vSelf.authenticationProvider.GetApplicationInfo()
+			if vApplicationInfoError != nil {
+				return diagnostic.NewError("Failed to obtain application info", vApplicationInfoError)
+			}
+
+			diagnostic.LogInfo("OneDriveClient.setAuthorization", "Token expired, executing refresh...")
+			vNewToken, vError := vAuthenticationToken.Refresh(vApplicationInfo)
+
+			if vError != nil {
+				return diagnostic.NewError("failed to refresh token", vError)
+			}
+
+			var vAuthenticationProviderInterface interface{} = vSelf.authenticationProvider
+			vStaticAuthenticationInfo, vIsStaticIsAuthenticationInfo := vAuthenticationProviderInterface.(auth.StaticAuthenticationInfo)
+
+			if vIsStaticIsAuthenticationInfo {
+				vStaticAuthenticationInfo.AuthenticationToken = vNewToken
+				diagnostic.LogInfo("OneDriveClient.setAuthorization", "Static token updated")
+			}
+		} else {
+			return diagnostic.NewError("Invalid token", vTokenError)
+		}
+	}
+
+	pRequest.Header.Set("Authorization", "bearer "+vAuthenticationToken.AccessToken)
 
 	return nil
 }

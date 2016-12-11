@@ -75,6 +75,23 @@ func (vSelf *OneDriveItem) IsFolder() bool {
 	return vSelf.Folder != nil
 }
 
+func (vSelf *OneDriveItem) ChildrenLoaded() bool {
+
+	if vSelf.Folder == nil {
+
+		return true
+	}
+	if vSelf.Folder.ChildCount > 0 {
+
+		if vSelf.Children == nil {
+			return false
+		}
+
+		return int64(len(vSelf.Children)) == vSelf.Folder.ChildCount
+	}
+
+	return true
+}
 func (vSelf *OneDriveItem) IsFile() bool {
 	return vSelf.File != nil
 }

@@ -28,6 +28,10 @@ import (
 
     //Build an online authentication helper
     vAuthenticationHelper := auth.NewHttpAuthHelper("localhost:8080", "!!!clientid!!!", "!!!clientsecret!!!", []string{"offline_access", "onedrive.readonly"})
+    
+    //Start the httpd
+    vAuthenticationHelper.StartListener()
+
 
     //Perform authentication
     vAuthenticationError :=vClient.PerformNewAuthentication(vAuthenticationHelper,time.Second * 120	)

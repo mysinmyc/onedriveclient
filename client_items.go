@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/mysinmyc/gocommons/diagnostic"
 )
 
 //GetChildren get item children
@@ -57,8 +59,13 @@ func (vSelf *OneDriveClient) GetItemPath(pItem interface{}) (vRisPath string, vR
 	switch pItem.(type) {
 	case string:
 		vRisPath = pItem.(string)
-		if strings.HasPrefix(vRisPath, "/drive") == false {
-			vRisPath = "/drive/root:/" + encodePath(vRisPath)
+
+		if strings.Contains(vRisPath, "/") == false {
+			vRisPath = "/drive/items/" + vRisPath
+		} else {
+			if strings.HasPrefix(vRisPath, "/drive") == false {
+				vRisPath = "/drive/root:/" + encodePath(vRisPath)
+			}
 		}
 	case *Drive:
 		vRisPath = "/drives/" + pItem.(*Drive).GetId() + "/root"
@@ -93,7 +100,26 @@ func (vSelf *OneDriveClient) GetItem(pItem interface{}, pExpandChildren bool) (v
 	vRisError = vSelf.DoRequest(http.MethodGet, vItemPath+vSuffix, nil, vItemData)
 
 	if vRisError != nil {
-		log.Printf("Error getting item of %v: %v", pItem, vRisError)
+		return nil, diagnostic.NewError("Failed", vRisError)
+	}
+
+	if vItemData.GetNextChunkLink() != "" {
+
+		vChildren, vChunkError := vSelf.MergeAllChunks(vItemData)
+
+		if vChunkError != nil {
+			return nil, vChunkError
+		}
+
+		vItemData.Children = vChildren
+
+		if vItemData.Folder != nil {
+			if int64(len(vItemData.Children)) != vItemData.Folder.ChildCount {
+
+				return nil, fmt.Errorf("%d children expected for item %v, effective %d ", vItemData.Folder.ChildCount, vItemData.Id, len(vItemData.Children))
+
+			}
+		}
 	}
 
 	return vItemData, nil

@@ -3,10 +3,11 @@ package auth
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/mysinmyc/gocommons/diagnostic"
 )
 
 //OfflineAuthHelper Helper to authenticate with the drive trough oauth20 without an http server
@@ -15,7 +16,7 @@ import (
 // For more informations about auth workflow check https://dev.onedrive.com/auth/msa_oauth.htm
 type OfflineAuthHelper struct {
 	applicationInfo       ApplicationInfo
-	authenticationHandler func(*AuthenticationToken)
+	authenticationHandler AuthenticationHandler
 }
 
 //NewOfflineAuthHelper create a new instance of OfflineAuthHelper
@@ -35,13 +36,13 @@ func NewOfflineAuthHelperFromApplicationInfo(pApplicationInfo ApplicationInfo) *
 }
 
 //SetAuthenticationHandler Set the function that received AuthenticationTokens coming from authentication flow
-func (vSelf *OfflineAuthHelper) SetAuthenticationHandler(pAuthenticationHandler func(*AuthenticationToken)) {
+func (vSelf *OfflineAuthHelper) SetAuthenticationHandler(pAuthenticationHandler AuthenticationHandler) {
 	vSelf.authenticationHandler = pAuthenticationHandler
 }
 
 func (vSelf *OfflineAuthHelper) onAuthenticationToken(pAuthenticationToken *AuthenticationToken) {
 	if vSelf.authenticationHandler != nil {
-		vSelf.authenticationHandler(pAuthenticationToken)
+		vSelf.authenticationHandler(pAuthenticationToken, vSelf.applicationInfo)
 	}
 }
 
@@ -52,9 +53,9 @@ func (vSelf *OfflineAuthHelper) onAuthenticationError(pError error) {
 }
 
 func (vSelf *OfflineAuthHelper) asyncReadTokenFromStdin() {
-	log.Printf("Open the browser to the following url %s", vSelf.GetAuthorizationURL())
+	fmt.Printf("Open the browser to the following url %s\n", vSelf.GetAuthorizationURL())
 	vRedirectURI := ""
-	log.Print("Then paste the result url here: ")
+	fmt.Printf("Then paste the result url here: ")
 	fmt.Scanf("%s\n", &vRedirectURI)
 	vReedimToken, _ := vSelf.ReedimTokenFromRedirectURI(vRedirectURI)
 	vSelf.onAuthenticationToken(vReedimToken)
@@ -70,7 +71,7 @@ func (vSelf *OfflineAuthHelper) WaitAuthenticationToken(pTimeout time.Duration) 
 
 	vTokenChannel := make(chan *AuthenticationToken)
 
-	vSelf.SetAuthenticationHandler(func(pAuthenticationToken *AuthenticationToken) {
+	vSelf.SetAuthenticationHandler(func(pAuthenticationToken *AuthenticationToken, pApplicationInfo ApplicationInfo) {
 		vTokenChannel <- pAuthenticationToken
 	})
 
@@ -104,13 +105,13 @@ func (vSelf *OfflineAuthHelper) ReedimTokenFromRedirectURI(pURI string) (vRisAut
 	vURI, vError := url.ParseRequestURI(pURI)
 
 	if vError != nil {
-		return newAuthenticationTokenError(vError), vError
+		return newAuthenticationTokenError(vError), diagnostic.NewError("Error parsing request uri %s", vError, pURI)
 	}
 
 	vCode := vURI.Query().Get("code")
 
 	if vCode == "" {
-		vError := fmt.Errorf("missing code parameter in uri %s ", pURI)
+		vError := diagnostic.NewError("missing code parameter in uri %s ", nil, pURI)
 		return newAuthenticationTokenError(vError), vError
 	}
 
@@ -118,7 +119,7 @@ func (vSelf *OfflineAuthHelper) ReedimTokenFromRedirectURI(pURI string) (vRisAut
 
 	if vReedimError != nil {
 		vSelf.onAuthenticationError(vReedimError)
-		return newAuthenticationTokenError(vReedimError), vReedimError
+		return newAuthenticationTokenError(vReedimError), diagnostic.NewError("failed to reedim token", vReedimError)
 	}
 
 	vSelf.onAuthenticationToken(&vAuthenticationToken)

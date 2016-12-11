@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -9,6 +8,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/mysinmyc/gocommons/diagnostic"
 )
 
 var (
@@ -20,26 +21,28 @@ var (
 // In start an http server on the specified address
 // For more informations about auth workflow check https://dev.onedrive.com/auth/msa_oauth.htm
 type HttpAuthHelper struct {
-	applicationInfo       ApplicationInfo
-	address               string
-	authenticationHandler func(*AuthenticationToken)
+	applicationInfo             ApplicationInfo
+	address                     string
+	pathPrefix                  string
+	authenticationHandler       AuthenticationHandler
+	redirectAfterAuthentication string
 }
 
 //NewAuthHelper create a new instance of AuthenticationHelper
-func NewHttpAuthHelper(pAddress string, pClientID string, pClientSecret string, pScope []string) *HttpAuthHelper {
-	vRis := &HttpAuthHelper{address: pAddress, applicationInfo: ApplicationInfo{ClientID: pClientID, ClientSecret: pClientSecret, Scope: pScope, RedirectURI: "http://" + pAddress + "/redirect"}}
+func NewHttpAuthHelper(pAddress string, pClientID string, pClientSecret string, pScope []string, pRedirectAfterAuthentication string) *HttpAuthHelper {
+	vRis := &HttpAuthHelper{address: pAddress, applicationInfo: ApplicationInfo{ClientID: pClientID, ClientSecret: pClientSecret, Scope: pScope, RedirectURI: "http://" + pAddress + "/onedrive/auth/redirect"}, redirectAfterAuthentication: pRedirectAfterAuthentication}
 	vRis.init()
 	return vRis
 }
 
 //SetAuthenticationHandler Set the function that received AuthenticationTokens coming from authentication flow
-func (vSelf *HttpAuthHelper) SetAuthenticationHandler(pAuthenticationHandler func(*AuthenticationToken)) {
+func (vSelf *HttpAuthHelper) SetAuthenticationHandler(pAuthenticationHandler AuthenticationHandler) {
 	vSelf.authenticationHandler = pAuthenticationHandler
 }
 
 func (vSelf *HttpAuthHelper) onAuthenticationToken(pAuthenticationToken *AuthenticationToken) {
 	if vSelf.authenticationHandler != nil {
-		vSelf.authenticationHandler(pAuthenticationToken)
+		vSelf.authenticationHandler(pAuthenticationToken, vSelf.applicationInfo)
 	}
 }
 
@@ -55,9 +58,50 @@ func (vSelf *HttpAuthHelper) init() error {
 		return nil
 	}
 
-	http.HandleFunc("/", func(pResponse http.ResponseWriter, pRequest *http.Request) {
+	http.HandleFunc("/onedrive/auth/begin", func(pResponse http.ResponseWriter, pRequest *http.Request) {
 
-		log.Printf("Asked login, redirecting to microsoft...")
+		io.WriteString(pResponse, fmt.Sprintf(`
+
+		<html>
+		<body>
+
+		<br/><br/>
+		
+		<center>
+
+
+		<form method="POST" action="redirectToMicrosoft" target="_top">
+		<table>
+		<tr><td>Client id</td><td><input name="client_id" type="text" value="%s"/></td></tr>
+		<tr><td>Client secret</td><td><input name="client_secret" type="password" value="%s"/></td></tr>
+		<tr><td>&nbsp;</td><td><input type="submit" value="Begin authentication"/></td></tr>
+		</table>		
+		</form>
+		</center>
+		
+		<br/><br/><br/><br/>
+		To perform authentication you must register your application on <a href="https://apps.dev.microsoft.com/" target="_new"/>Microsoft Application Registration Portal</a>.<br/>Application redirect is %s 
+
+
+		
+		</body>
+		</html>
+		`, vSelf.applicationInfo.ClientID, vSelf.applicationInfo.ClientSecret, vSelf.applicationInfo.RedirectURI))
+	})
+
+	http.HandleFunc("/onedrive/auth/redirectToMicrosoft", func(pResponse http.ResponseWriter, pRequest *http.Request) {
+
+		vClientId := pRequest.FormValue("client_id")
+		if vClientId != "" {
+			vSelf.applicationInfo.ClientID = vClientId
+		}
+
+		vClientSecret := pRequest.FormValue("client_secret")
+		if vClientSecret != "" {
+			vSelf.applicationInfo.ClientSecret = vClientSecret
+		}
+
+		diagnostic.LogInfo("HttpAuthHelper", "Asked login, redirecting to microsoft...")
 		vMicrosoftLoginURL := fmt.Sprintf(
 			"https://login.live.com/oauth20_authorize.srf?client_id=%s&scope=%s&response_type=code&redirect_uri=%s",
 			vSelf.applicationInfo.ClientID,
@@ -66,12 +110,12 @@ func (vSelf *HttpAuthHelper) init() error {
 		http.Redirect(pResponse, pRequest, vMicrosoftLoginURL, 302)
 	})
 
-	http.HandleFunc("/redirect", func(pResponse http.ResponseWriter, pRequest *http.Request) {
+	http.HandleFunc("/onedrive/auth/redirect", func(pResponse http.ResponseWriter, pRequest *http.Request) {
 
 		pRequest.ParseForm()
 		vCode := pRequest.FormValue("code")
 
-		log.Printf("Asking for token reedim authorization code %s, asking redeem...", vCode)
+		diagnostic.LogInfo("Asking for token reedim authorization code %s, asking redeem...", vCode)
 
 		vAuthenticationToken, vReedimError := reedimCode(vSelf.applicationInfo, vCode)
 
@@ -82,18 +126,37 @@ func (vSelf *HttpAuthHelper) init() error {
 
 		vSelf.onAuthenticationToken(&vAuthenticationToken)
 
-		http.Redirect(pResponse, pRequest, "/done", 302)
+		http.Redirect(pResponse, pRequest, "/onedrive/auth/done", 302)
 	})
 
-	http.HandleFunc("/done", func(pResponse http.ResponseWriter, pRequest *http.Request) {
-		io.WriteString(pResponse, "<html><body>Authentication succeded</body></html>")
-	})
+	http.HandleFunc("/onedrive/auth/done", func(pResponse http.ResponseWriter, pRequest *http.Request) {
 
-	go http.ListenAndServe(vSelf.address, nil)
+		if vSelf.redirectAfterAuthentication != "" {
+			http.Redirect(pResponse, pRequest, vSelf.redirectAfterAuthentication, 302)
+			return
+		}
+		io.WriteString(pResponse, `<html><body>
+
+
+			<script>
+				setTimeout(100)
+			</script>
+			
+			Authentication succeded
+
+			
+			</body></html>
+			`)
+	})
 
 	_Initialized = true
 
 	return nil
+}
+
+//StartListener method required in case authentication helper is not bound to an existing httpd
+func (vSelf *HttpAuthHelper) StartListener() {
+	go http.ListenAndServe(vSelf.address, nil)
 }
 
 //WaitAuthenticationToken block the current thread waiting for a token coming from authentication flow
@@ -103,9 +166,10 @@ func (vSelf *HttpAuthHelper) init() error {
 //		vRisAuthenticationToken authenticationToken generated. In case of errors, is not valid and contains in the field AuthenticationToken.Error the cause
 //		vRisError nil in case of authentication succeded otherwise the error occurred
 func (vSelf *HttpAuthHelper) WaitAuthenticationToken(pTimeout time.Duration) (vRisAuthenticationToken *AuthenticationToken, vRisError error) {
+
 	log.Printf("Requested authentication, open a browser to the following url to continue: http://%s", vSelf.address)
 	vTokenChannel := make(chan *AuthenticationToken)
-	vSelf.SetAuthenticationHandler(func(pAuthenticationToken *AuthenticationToken) {
+	vSelf.SetAuthenticationHandler(func(pAuthenticationToken *AuthenticationToken, pApplicationInfo ApplicationInfo) {
 		vTokenChannel <- pAuthenticationToken
 	})
 
@@ -113,7 +177,7 @@ func (vSelf *HttpAuthHelper) WaitAuthenticationToken(pTimeout time.Duration) (vR
 	case vToken := <-vTokenChannel:
 		return vToken, vToken.Error
 	case <-time.After(pTimeout):
-		vError := errors.New("timeout expired waiting for authentication")
+		vError := diagnostic.NewError("timeout expired waiting for authentication", nil)
 		return newAuthenticationTokenError(vError), vError
 
 	}

@@ -1,6 +1,9 @@
 package onedriveclient
 
-import "time"
+import (
+	"time"
+	"fmt"
+)
 
 //Item interface for onedrive items
 type Item interface {
@@ -24,17 +27,13 @@ type OneDriveItem struct {
 	//Item children (if nil are not loaded)
 	Children []*OneDriveItem `json:"children"`
 
+	Deleted *struct {
+		State string `json:"state"`
+	}  `json:"deleted"`
+	
 	Folder *Folder `json:"folder"`
 
-	File *struct {
-		MimeType           string `json:"mimeType"`
-		ProcessingMetadata bool   `json:"processingMetadata"`
-		Hashes             struct {
-			Crc32Hash    string `json:"Crc32Hash"`
-			Sha1Hash     string `json:"Sha1Hash"`
-			QuickXorHash string `json:"QuickXorHash"`
-		} `json:"hashes"`
-	} `json:"file"`
+	File *File `json:"file"`
 
 	CreatedBy struct {
 		User         *Identity `json:"user"`
@@ -50,10 +49,27 @@ type OneDriveItem struct {
 	ChildrenNextLink string `json:"children@odata.nextLink"`
 
 	ParentReference *ParentReference `json:"parentReference"`
+
+	SizeBytes	int64 `json:"size"`
+
+
+	Package *struct {
+		State string `json:"type"`
+	}  `json:"package"`
 }
 
 type Folder struct {
 	ChildCount int64 `json:"ChildCount"`
+}
+
+type File struct {
+	MimeType           string `json:"mimeType"`
+	ProcessingMetadata bool   `json:"processingMetadata"`
+	Hashes             struct {
+		Crc32Hash    string `json:"Crc32Hash"`
+		Sha1Hash     string `json:"Sha1Hash"`
+		QuickXorHash string `json:"QuickXorHash"`
+	} `json:"hashes"`
 }
 
 type ParentReference struct {
@@ -92,14 +108,31 @@ func (vSelf *OneDriveItem) ChildrenLoaded() bool {
 
 	return true
 }
+
 func (vSelf *OneDriveItem) IsFile() bool {
 	return vSelf.File != nil
+}
+
+func (vSelf *OneDriveItem) IsDeleted() bool {
+	return vSelf.Deleted != nil
+}
+
+func (vSelf *OneDriveItem) IsPackage() bool {
+	return vSelf.Package != nil
 }
 
 func (vSelf *OneDriveItem) GetFullOneDrivePath() string {
 
 	if vSelf.ParentReference == nil {
+
+		if vSelf.Name=="root" {
+			return "/drive/root:"
+		}
 		return "/drive/root:/" + vSelf.Name
 	}
 	return vSelf.ParentReference.Path + "/" + vSelf.Name
 }
+
+func (vSelf *OneDriveItem) String() string {
+	return fmt.Sprintf("{OneDriveItem id:%s path:%s isFolder:%v}", vSelf.Id, vSelf.GetFullOneDrivePath(), vSelf.IsFolder())
+}	

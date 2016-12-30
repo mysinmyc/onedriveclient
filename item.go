@@ -56,6 +56,13 @@ type OneDriveItem struct {
 	Package *struct {
 		State string `json:"type"`
 	}  `json:"package"`
+
+
+	//Local informations not shared 
+	LocalInfo struct {
+		SnapShotDate time.Time
+		workingData interface{}
+	} `json:"-"`
 }
 
 type Folder struct {

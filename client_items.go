@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
-
+	"time"
 	"github.com/mysinmyc/gocommons/diagnostic"
 )
 
@@ -98,11 +98,11 @@ func (vSelf *OneDriveClient) GetItem(pItem interface{}, pExpandChildren bool) (v
 		return nil, vPathError
 	}
 	vRisError = vSelf.DoRequest(http.MethodGet, vItemPath+vSuffix, nil, vItemData)
-
 	if vRisError != nil {
 		return nil, diagnostic.NewError("Failed", vRisError)
 	}
 
+	vItemData.LocalInfo.SnapShotDate= time.Now()
 	if vItemData.GetNextChunkLink() != "" {
 
 		vChildren, vChunkError := vSelf.MergeAllChunks(vItemData)
@@ -122,6 +122,9 @@ func (vSelf *OneDriveClient) GetItem(pItem interface{}, pExpandChildren bool) (v
 		}
 	}
 
+	for _,vCurChild := range vItemData.Children {
+		vCurChild.LocalInfo.SnapShotDate= time.Now()
+	}
 	return vItemData, nil
 }
 
